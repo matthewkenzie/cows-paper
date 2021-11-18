@@ -6,13 +6,13 @@ Provided here are a few helper modules / classes which can be used to extract sW
 
 - `examples.py` demonstrates how each of the classes provided works and will:
   1. Generate some toy data
-  
+
   ![toy](https://user-images.githubusercontent.com/1140576/142237277-0485e6e7-8ccf-489a-affd-6b81028ed5c3.png)
 
   2. Fit the toy data in the discriminanting variable to get an estimate of the discriminating variable pdfs
 
   3. Run the "summation" sWeights method (using the `SWeight` class provided below) ![sws](https://user-images.githubusercontent.com/1140576/142237391-0b37f428-5668-4602-98bb-097fdaae62e8.png)
-  4. Run the COW method with variance function of unity, I(m)=1, (using the `Cow` class provided below) ![cows](https://user-images.githubusercontent.com/1140576/142237453-8c3dfa2b-b38d-4e22-96d8-30f31f61d1c8.png) 
+  4. Run the COW method with variance function of unity, I(m)=1, (using the `Cow` class provided below) ![cows](https://user-images.githubusercontent.com/1140576/142237453-8c3dfa2b-b38d-4e22-96d8-30f31f61d1c8.png)
 
   5. Fit the weighted distributions and correct the covariance using the `cov_correct` function provided below ![tfit](https://user-images.githubusercontent.com/1140576/142237505-11032b1c-b6fa-47dc-9a0e-e965210fdf6b.png)
 
@@ -32,4 +32,5 @@ Provided here are a few helper modules / classes which can be used to extract sW
   - Im - the variance function for the discriminant variance (can also pass 1 and it will be set of uniform)
   - obs - one can instead or additionally pass the observed distribution in the discriminant variable which will be used for the variance function instead. In this case you must pass a two element tuple giving the bin entries and bin edges for the observed dataset (the same as what `np.histogram(data)` would return)
 
+- `Independence.py` - this provides a function which computes the Kendall "tau" coefficient for a data sample
 

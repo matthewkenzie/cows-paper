@@ -2,3 +2,4 @@
 **.swo
 __pycache__
 __plots__
+.DS_Store
