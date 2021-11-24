@@ -11,7 +11,7 @@ import boost_histogram as bh
 ## from this code
 from SWeighter import SWeight
 from Cow import cow
-from CovarianceCorrector import cov_correct
+from CovarianceCorrector import partial_derivative, cov_correct, full_cov_correct
 
 # make a toy model
 
@@ -191,6 +191,11 @@ def plot_tweighted(x, wts, wtnames=[], funcs=[], save=None):
   fig.tight_layout()
   if save: fig.savefig(save)
 
+def wnll(tlb, tdata, wts):
+  sig  = expon(trange[0],tlb)
+  sigN = np.diff( sig.cdf(trange) )
+  return -np.sum( wts * np.log( sig.pdf( tdata ) / sigN ) )
+
 ## generate the toy
 toy = generate(Ns,Nb,mu,sg,lb,tlb,ret_true=True)
 plot(toy, save='__plots__/toy.png')
@@ -211,42 +216,27 @@ print(mi)
 spdf = lambda m: mpdf(m,*mi.values,comps=['sig'])
 bpdf = lambda m: mpdf(m,*mi.values,comps=['bkg'])
 
-sweighter = SWeight( toy[:,0], [spdf,bpdf], [mi.values['Ns'],mi.values['Nb']], (mrange,), method='summation', compnames=('sig','bkg'), verbose=True, checks=True )
+sweighter = SWeight( toy[:,0], [spdf,bpdf], [mi.values['Ns'],mi.values['Nb']], (mrange,), method='summation', compnames=('sig','bkg'), verbose=True, checks=False )
 
-sws = sweighter.getWeight(0, toy[:,0])
-bws = sweighter.getWeight(1, toy[:,0])
-
-# plot the weights
-x = np.linspace(*mrange,400)
-swp = sweighter.getWeight(0,x)
-bwp = sweighter.getWeight(1,x)
-plot_wts(x, swp, bwp, save='__plots__/sws.png')
-
-# now run the COW equivalent
-from scipy.integrate import quad
+# get the COW equivalent
 gs = lambda m: mpdf(m,*mi.values,comps=['sig']) / mi.values['Ns']
 gb = lambda m: mpdf(m,*mi.values,comps=['bkg']) / mi.values['Nb']
 Im = 1 #lambda m: mpdf(m,*mi.values) / (mi.values['Ns'] + mi.values['Nb'] )
 
 cw = cow(mrange, spdf, gb, Im)
 
-scow = cw.wk(0,toy[:,0])
-bcow = cw.wk(1,toy[:,0])
-
-# plot the weights
-scp = cw.wk(0,x)
-bcp = cw.wk(1,x)
-plot_wts(x, scp, bcp, save='__plots__/cows.png')
-
-## NOW FIT THE CONTROL DIMENSION UNDER BOTH WEIGHTING SCHEMES
-def wnll(tlb, tdata, wts):
-  sig  = expon(trange[0],tlb)
-  sigN = np.diff( sig.cdf(trange) )
-  return -np.sum( wts * np.log( sig.pdf( tdata ) / sigN ) )
-
+# compare the two
 flbs = []
-for name, wts in zip(['SW','COW'],[sws,scow]):
+for meth, cls in zip( ['SW','COW'], [sweighter,cw] ):
 
+  # plot weights
+  x = np.linspace(*mrange,400)
+  swp = cls.getWeight(0,x)
+  bwp = cls.getWeight(1,x)
+  plot_wts(x, swp, bwp, save=f'__plots__/{meth}_wts.png')
+
+  # fit weighted data
+  wts = cls.getWeight(0,toy[:,0])
   nll = lambda tlb: wnll(tlb, toy[:,1], wts)
 
   # do the minimisation
@@ -263,26 +253,28 @@ for name, wts in zip(['SW','COW'],[sws,scow]):
 
   ncov = cov_correct(tpdf_cor, toy[:,1], wts, fval, fcov, verbose=True)
 
-  print('Method:', name, f'- covariance corrected {fval[0]:.1f} +/- {fcov[0,0]**0.5:.1f} ---> {fval[0]:.1f} +/- {ncov[0,0]**0.5:.1f}')
+  # second order correction
+  hs  = tpdf_cor
+  ws  = lambda m: cls.getWeight(0,m)
+  W   = cls.Wkl
 
+  # these derivatives can be done numerically but for the sweights / COW case it's straightfoward to compute them
+  ws = lambda Wss, Wsb, Wbb, gs, gb: (Wbb*gs - Wsb*gb) / ((Wbb-Wsb)*gs + (Wss-Wsb)*gb)
+  dws_Wss = lambda Wss, Wsb, Wbb, gs, gb: gb * ( Wsb*gb - Wbb*gs ) / (-Wss*gb + Wsb*gs + Wsb*gb - Wbb*gs)**2
+  dws_Wsb = lambda Wss, Wsb, Wbb, gs, gb: ( Wbb*gs**2 - Wss*gb**2 ) / (Wss*gb - Wsb*gs - Wsb*gb + Wbb*gs)**2
+  dws_Wbb = lambda Wss, Wsb, Wbb, gs, gb: gs * ( Wss*gb - Wsb*gs ) / (-Wss*gb + Wsb*gs + Wsb*gb - Wbb*gs)**2
+
+  tcov = full_cov_correct(hs, [gs,gb], toy[:,1], toy[:,0], wts, [mi.values['Ns'],mi.values['Nb']], fval, fcov, [dws_Wss,dws_Wsb,dws_Wbb],[W[0,0],W[0,1],W[1,1]], verbose=True)
+
+  print('Method:', meth, f'- covariance corrected {fval[0]:.1f} +/- {fcov[0,0]**0.5:.1f} ---> {fval[0]:.1f} +/- {tcov[0,0]**0.5:.1f}')
 
 ## plot weight T distribution
 swf  = lambda t: tpdf(t, mi.values['Ns'], 0, flbs[0], comps=['sig'] )
 cowf = lambda t: tpdf(t, mi.values['Ns'], 0, flbs[1], comps=['sig'] )
+sws  = sweighter.getWeight(0, toy[:,0])
+scow = cw.getWeight(0, toy[:,0])
+
 plot_tweighted(toy[:,1], [sws,scow], ['SW','COW'], funcs=[swf,cowf], save='__plots__/tfit.png' )
 
-
-# make a dataframe to store all the information
-import pandas as pd
-df = pd.DataFrame()
-df['m'] = toy[:,0]
-df['t'] = toy[:,1]
-df['cat'] = toy[:,2]
-df['sws'] = sws
-df['bws'] = bws
-df['scow'] = scow
-df['bcow'] = bcow
-
-print(df)
 
 plt.show()

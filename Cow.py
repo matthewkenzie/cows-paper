@@ -87,5 +87,8 @@ class cow():
     n = len(self.gk)
     return np.sum( [ self.Akl[k,l] * self.gk[l](m) / self.Im(m) for l in range(n) ], axis=0 )
 
+  def getWeight(self, k, m):
+    return self.wk(k,m)
+
 
 
